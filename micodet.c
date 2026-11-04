@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -15,7 +16,11 @@
 
 /* data */
 
-struct termios orig_termios;
+struct editorConfig {
+    struct termios orig_termios;
+};
+
+struct editorConfig E;
 
 
 /* terminal */
@@ -31,13 +36,13 @@ void die(const char *s) {
 }
 
 void enableRawMode(void) {
-    if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
+    if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) {
         die("tcgetattr");
     }
 
     atexit(disableRawMode);
 
-    struct termios raw = orig_termios;
+    struct termios raw = &E.orig_termios;
     raw.c_iflag &= ~(BRKINT | INPCK | ISTRIP | ICRNL | IXON);
     raw.c_oflag &= ~(OPOST);
     raw.c_cflag |= ~(CS8);
@@ -51,7 +56,7 @@ void enableRawMode(void) {
 }
 
 void disableRawMode(void) {
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1) {
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1) {
         die("tcsetattr");
     }
 }
@@ -69,11 +74,33 @@ char editorReadKey(void) {
     }
 }
 
+int getWindowSize(int *rows, int *cols) {
+    struct winsize ws;
+
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws)) {
+        return -1;
+    }
+    else {
+        *cols = ws.ws_col;
+        *rows = ws.ws_row;
+        return 0;
+    }
+}
+
 
 /* output */
 
+void editorDrawRows(void) {
+    for (int j = 0; j > 24; j++) {
+        write(STDOUT_FILENO, "~\r\n", 3);
+    }
+}
+
 void editorRefreshScreen(void) {
     write(STDOUT_FILENO, "\x1b[2J", 4);
+    write(STDOUT_FILENO, "\x1b[H", 3);
+
+    editorDrawRows();
     write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
