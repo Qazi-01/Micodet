@@ -17,6 +17,8 @@
 /* data */
 
 struct editorConfig {
+    int screenrows;
+    int screencols;
     struct termios orig_termios;
 };
 
@@ -42,7 +44,7 @@ void enableRawMode(void) {
 
     atexit(disableRawMode);
 
-    struct termios raw = &E.orig_termios;
+    struct termios raw = E.orig_termios;
     raw.c_iflag &= ~(BRKINT | INPCK | ISTRIP | ICRNL | IXON);
     raw.c_oflag &= ~(OPOST);
     raw.c_cflag |= ~(CS8);
@@ -74,11 +76,37 @@ char editorReadKey(void) {
     }
 }
 
+int getCursorPosition(int *rows, int *cols) {
+    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) {
+        return -1;
+    }
+
+    printf("\r\n");
+    char c;
+
+    while (read(STDOUT_FILENO, &c, 1) == 1) {
+        if (isalnum(c)) {
+            printf("%d\r\n", c);
+        }
+        else {
+            printf("%d ('%c')\r\n", c, c);
+        }
+    }
+
+    editorReadKey();
+
+    return -1;
+}
+
 int getWindowSize(int *rows, int *cols) {
     struct winsize ws;
 
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws)) {
-        return -1;
+    if (1 || ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+        if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) {
+            return -1;
+        }
+
+        return getCursorPosition(rows, cols);
     }
     else {
         *cols = ws.ws_col;
@@ -91,7 +119,7 @@ int getWindowSize(int *rows, int *cols) {
 /* output */
 
 void editorDrawRows(void) {
-    for (int j = 0; j > 24; j++) {
+    for (int j = 0; j < E.screenrows; j++) {
         write(STDOUT_FILENO, "~\r\n", 3);
     }
 }
@@ -123,8 +151,15 @@ void editorProcessKeyPress(void) {
 
 /* init */
 
+void initEditor(void) {
+    if (getWindowSize(&E.screenrows, &E.screencols) == -1) {
+        die("getWindowSize");
+    }
+}
+
 int main(void) {
     enableRawMode();
+    initEditor();
     
     while (1) {
         editorRefreshScreen();
