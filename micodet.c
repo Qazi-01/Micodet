@@ -77,31 +77,42 @@ char editorReadKey(void) {
 }
 
 int getCursorPosition(int *rows, int *cols) {
+    char buf[32];
+    unsigned int i = 0;
+
     if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) {
         return -1;
     }
 
-    printf("\r\n");
-    char c;
+    while (i < sizeof(buf) - 1) {
+        if (read(STDIN_FILENO, &buf[i], 1) != 1) {
+            break;
+        }
 
-    while (read(STDOUT_FILENO, &c, 1) == 1) {
-        if (isalnum(c)) {
-            printf("%d\r\n", c);
+        if (buf[i] == 'R') {
+            break;
         }
-        else {
-            printf("%d ('%c')\r\n", c, c);
-        }
+        
+        i++;
     }
 
-    editorReadKey();
+    buf[i] = '\0';
 
-    return -1;
+    if (buf[0] != '\x1b' || buf[i] != '[') {
+        return -1;
+    }
+
+    if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) {
+        return -1;
+    }
+
+    return 0;
 }
 
 int getWindowSize(int *rows, int *cols) {
     struct winsize ws;
 
-    if (1 || ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
         if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) {
             return -1;
         }
@@ -116,11 +127,25 @@ int getWindowSize(int *rows, int *cols) {
 }
 
 
+/* append buffer */
+
+struct abuf {
+    char *b;
+    int len;
+};
+
+#define ABUF_INIT {NULL, 0}
+
+
 /* output */
 
 void editorDrawRows(void) {
     for (int j = 0; j < E.screenrows; j++) {
-        write(STDOUT_FILENO, "~\r\n", 3);
+        write(STDOUT_FILENO, "~", 1);
+
+        if (j < E.screenrows - 1) {
+            write(STDOUT_FILENO, "\r\n", 2);
+        }
     }
 }
 
